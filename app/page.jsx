@@ -1,0 +1,20 @@
+'use client';
+import {useState,useEffect} from 'react';
+const KEY='ai-quality-report-demo';
+export default function Home(){
+ const [tab,setTab]=useState('input'),[rows,setRows]=useState([]),[type,setType]=useState('소음'),[occurred,setOccurred]=useState(''),[description,setDescription]=useState(''),[measurements,setMeasurements]=useState(''),[file,setFile]=useState(null),[draft,setDraft]=useState(''),[causes,setCauses]=useState(''),[start,setStart]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ useEffect(()=>{try{setRows(JSON.parse(localStorage.getItem(KEY)||'[]'))}catch{};setStart(Date.now())},[]);
+ function persist(next){setRows(next);localStorage.setItem(KEY,JSON.stringify(next))}
+ async function generate(){
+  setError('');setBusy(true);
+  try{
+   const data=new FormData();data.append('type',type);data.append('occurred',occurred);data.append('description',description);data.append('measurements',measurements);if(file)data.append('file',file);
+   const response=await fetch('/api/analyze',{method:'POST',body:data});const result=await response.json();if(!response.ok)throw Error(result.error||'분석 실패');
+   setCauses(result.causes);setDraft(result.draft);
+  }catch(e){setError(e.message)}finally{setBusy(false)}
+ }
+ function save(used){if(!draft.trim())return;const end=Date.now();persist([{id:crypto.randomUUID(),type,occurred,description,measurements,causes,draft,used,startedAt:start,endedAt:end,elapsedSeconds:Math.round((end-start)/1000)},...rows]);setTab('list');setDraft('');setCauses('');setStart(Date.now())}
+ const rate=rows.length?Math.round(rows.filter(r=>r.used).length/rows.length*100):0;
+ return <main><h1>AI 품질 개선 요청 관리</h1><p className="muted">교육용 가상 데이터 기반 품질 분석 · AI 결과는 검증이 필요한 가설입니다.</p><nav><button className={tab==='input'?'':'secondary'} onClick={()=>setTab('input')}>불량 데이터 입력</button><button className={tab==='list'?'':'secondary'} onClick={()=>setTab('list')}>목록·요약 ({rows.length})</button></nav>
+ {tab==='input'?<><section className="panel"><h2>불량 데이터 입력</h2><div className="grid"><div><label>불량 유형</label><select value={type} onChange={e=>setType(e.target.value)}>{['소음','진동','치수','외관','기타'].map(t=><option key={t}>{t}</option>)}</select></div><div><label>발생 시각</label><input type="datetime-local" value={occurred} onChange={e=>setOccurred(e.target.value)}/></div></div><p><label>검사 데이터 (CSV/Excel)</label><input type="file" accept=".csv,.xlsx,.xls" onChange={e=>setFile(e.target.files?.[0]||null)}/></p><p><label>불량 현상</label><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="발생 조건과 관찰된 현상을 입력하세요"/></p><p><label>주요 측정값</label><textarea value={measurements} onChange={e=>setMeasurements(e.target.value)} placeholder="예: 1000rpm, 68dB, 기준 55dB"/></p><button disabled={busy||!description.trim()} onClick={generate}>{busy?'분석 중...':'AI 원인 분석 및 초안 생성'}</button>{error&&<p role="alert" style={{color:'#b91c1c'}}>{error}</p>}</section>{draft&&<section className="panel"><h2>AI 분석 결과</h2><p className="muted">원인 후보는 확정된 원인이 아닙니다. 엔지니어 검토가 필요합니다.</p><label>원인 후보</label><textarea value={causes} onChange={e=>setCauses(e.target.value)}/><p><label>개선 요청서 초안 (수정 가능)</label><textarea style={{minHeight:240}} value={draft} onChange={e=>setDraft(e.target.value)}/></p><p>이 AI 초안을 활용했나요?</p><button onClick={()=>save(true)}>예 · 저장</button> <button className="secondary" onClick={()=>save(false)}>아니요 · 저장</button></section>}</>:<><section className="panel"><h2>요약</h2><div className="grid"><div><strong>총 요청서 {rows.length}건</strong></div><div><strong>AI 초안 활용률 {rate}%</strong></div></div><p className="muted">작성 소요 시간은 기록됩니다. 시간 단축률은 수동 작성 기준 시간이 있어야 계산할 수 있습니다.</p></section><section className="panel"><h2>작성 목록</h2>{rows.length===0?<p>아직 저장된 요청서가 없습니다.</p>:rows.map(r=><div className="item" key={r.id}><strong>{r.type} · {r.occurred||'발생 시각 미입력'}</strong><p className="muted">작성 {r.elapsedSeconds}초 · AI 초안 활용 {r.used?'예':'아니요'}</p><details><summary>요청서 보기</summary><pre>{r.draft}</pre><p><strong>원인 후보</strong></p><pre>{r.causes}</pre></details></div>)}</section></>}</main>
+}
